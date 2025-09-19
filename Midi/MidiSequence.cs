@@ -481,30 +481,52 @@
 			{
 				var ev = Events[i];
 				var m = ev.Message;
-				if(0x90 == (m.Status&0xF0))
+				if (0x90 == (m.Status & 0xF0))
 				{
-					var mw = m as MidiMessageWord;
+					var mw = (MidiMessageWord)m;
 					var key = (NoteId: mw.Data1, Channel: mw.Channel);
-					IList<(int Position, byte Velocity)> l;
-					if(!dic.TryGetValue(key,out l))
-					{
-						l = new List<(int Position, byte Velocity)>();
-						dic.Add(key, l);
-					}
-					l.Add((pos+ev.Position,mw.Data2));
 
-				} else if(0x80==(m.Status&0xF0)) 
-				{
-					
-					var mw = m as MidiMessageWord;
-					var key = (NoteId: mw.Data1, Channel: mw.Channel);
-					IList<(int Position, byte Velocity)> l;
-					if (dic.TryGetValue(key,out l))
+					//Some MIDI files use the note-on & velocity = 0 status instead of the note-off status. 
+					if (mw.Data2 == 0)
 					{
-						for(int jc = l.Count,j=0;j<jc;++j)
+						if (dic.TryGetValue(key, out var l))
 						{
-							var mn = l[j];
-							result.Add(new MidiNote(mn.Position, mw.Channel, mw.Data1, mn.Velocity, pos - mn.Position+ev.Position));
+							for (int jc = l.Count, j = 0; j < jc; ++j)
+							{
+								var (Position, Velocity) = l[j];
+								result.Add(
+									new MidiNote(Position, mw.Channel, mw.Data1, Velocity, pos - Position + ev.Position)
+								);
+								l.RemoveAt(j);
+								--jc;
+								--j;
+								if (l.Count == 0)
+									dic.Remove(key);
+							}
+						}
+					}
+					else
+					{
+						if (!dic.TryGetValue(key, out var l)) {
+							l = new List<(int Position, byte Velocity)>();
+							dic.Add(key, l);
+						}
+						l.Add((pos + ev.Position, mw.Data2));
+					}
+
+				}
+				else if (0x80 == (m.Status & 0xF0))
+				{
+
+					var mw = (MidiMessageWord)m;
+					var key = (NoteId: mw.Data1, Channel: mw.Channel);
+					IList<(int Position, byte Velocity)>? l;
+					if (dic.TryGetValue(key, out l))
+					{
+						for (int jc = l.Count, j = 0; j < jc; ++j)
+						{
+							var (Position, Velocity) = l[j];
+							result.Add(new MidiNote(Position, mw.Channel, mw.Data1, Velocity, pos - Position + ev.Position));
 							l.RemoveAt(j);
 							--jc;
 							--j;
@@ -513,6 +535,9 @@
 						}
 					}
 				}
+
+				 
+
 				pos += ev.Position;
 			}
 			result.Sort((x, y) => { return x.Position.CompareTo(y.Position); });
